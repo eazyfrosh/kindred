@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function signedIn() { return request.auth != null; }
+  function active() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.disabled == false; }
+  function admin() { return active() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'; }
+  function publicCampaign(id) { return get(/databases/$(database)/documents/campaigns/$(id)).data.status == 'approved'; }
+  match /users/{uid} {
+   allow read: if active() && (request.auth.uid == uid || admin());
+   allow create, delete: if false;
+   allow update: if active() && request.auth.uid == uid
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['firstName','lastName','updatedAt'])
+    && request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 && request.resource.data.firstName.size() <= 80
+    && request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 && request.resource.data.lastName.size() <= 80;
+  }
+  match /campaigns/{id} {
+   allow read: if resource.data.status == 'approved' || (active() && (resource.data.organizerId == request.auth.uid || admin()));
+   // All creation, edits, review transitions, and counters pass through authorized server APIs.
+   allow write: if false;
+  }
+  match /donations/{id} {
+   allow read: if active() && (resource.data.donorId == request.auth.uid || admin());
+   allow write: if false;
+  }
+  match /publicDonations/{id} { allow read: if publicCampaign(resource.data.campaignId); allow write: if false; }
+  match /campaignUpdates/{id} { allow read: if publicCampaign(resource.data.campaignId) || admin(); allow write: if false; }
+  match /comments/{id} { allow read: if (resource.data.status == 'approved' && publicCampaign(resource.data.campaignId)) || admin(); allow write: if false; }
+  match /notifications/{id} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
+  match /siteSettings/{id} { allow read: if id == 'public' || id == 'metrics' || admin(); allow write: if false; }
+  match /volunteerApplications/{id} { allow read: if admin(); allow write: if false; }
+  match /contactMessages/{id} { allow read: if admin(); allow write: if false; }
+  match /newsletterSubscribers/{id} { allow read: if admin(); allow write: if false; }
+  match /testimonials/{id} { allow read: if resource.data.published == true || admin(); allow write: if false; }
+  match /partners/{id} { allow read: if resource.data.published == true || admin(); allow write: if false; }
+  match /{document=**} { allow read, write: if false; }
+ }
+}

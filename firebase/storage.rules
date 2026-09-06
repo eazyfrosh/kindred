@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+ match /b/{bucket}/o {
+  function active(uid) { return request.auth != null && request.auth.uid == uid && firestore.get(/databases/(default)/documents/users/$(uid)).data.disabled == false; }
+  function image() { return request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/(jpeg|png|webp)'); }
+  match /campaigns/{uid}/{file} {
+   allow read: if active(uid);
+   allow create: if active(uid) && request.auth.token.email_verified == true && image() && file.matches('[a-zA-Z0-9-]+[.](jpg|png|webp)');
+   // Published download URLs are bearer URLs; changing or deleting referenced files requires server review.
+   allow update, delete: if false;
+  }
+  match /profiles/{uid}/{file} { allow read: if active(uid); allow create: if active(uid) && image(); allow update, delete: if false; }
+  match /organizations/{uid}/{file} { allow read: if active(uid); allow create: if active(uid) && request.auth.token.email_verified == true && request.resource.size < 10 * 1024 * 1024 && request.resource.contentType == 'application/pdf'; allow update, delete: if false; }
+  match /{allPaths=**} { allow read, write: if false; }
+ }
+}
