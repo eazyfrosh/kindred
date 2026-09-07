@@ -19,7 +19,10 @@ export async function currentUser(): Promise<UserProfile | null> {
   let uid: string;
   try {
     uid = (await adminAuth().verifySessionCookie(cookie, true)).uid;
-  } catch {
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error ? String(error.code) : 'unknown';
+    console.error('Session verification failed:', code);
     return null;
   }
   const snap = await db().collection('users').doc(uid).get();

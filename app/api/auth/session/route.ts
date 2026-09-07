@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { z } from 'zod';
 import { adminAuth, db } from '@/firebase/admin';
 import { assertOrigin, assertLive, jsonBody, rateLimit, HttpError } from '@/lib/security';
@@ -58,14 +57,16 @@ export async function POST(request: Request) {
     });
     const expiresIn = 5 * 24 * 60 * 60 * 1000;
     const session = await adminAuth().createSessionCookie(data.idToken, { expiresIn });
-    (await cookies()).set('__session', session, {
+    const response = NextResponse.json({ ok: true });
+    response.headers.set('Cache-Control', 'no-store');
+    response.cookies.set('__session', session, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: expiresIn / 1000,
     });
-    return NextResponse.json({ ok: true });
+    return response;
   } catch (e) {
     return apiError(e);
   }
@@ -73,8 +74,10 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     assertOrigin(request);
-    (await cookies()).delete('__session');
-    return NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true });
+    response.headers.set('Cache-Control', 'no-store');
+    response.cookies.delete('__session');
+    return response;
   } catch (e) {
     return apiError(e);
   }

@@ -18,13 +18,11 @@ import { toast } from 'sonner';
 export function AuthForm({ mode }: { mode: 'login' | 'signup' | 'forgot-password' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
   async function establish() {
     const user = auth().currentUser;
     if (!user) throw new Error('Please sign in.');
     await requestJSON('/api/auth/session', { idToken: await user.getIdToken(true) });
-    router.push('/dashboard');
-    router.refresh();
+    window.location.replace('/dashboard');
   }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -50,8 +48,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' | 'forgot-password
           lastName: f.lastName,
         });
         toast.success('Account created. Check your email to verify your address.');
-        router.push('/dashboard');
-        router.refresh();
+        window.location.replace('/dashboard');
       } else {
         await signInWithEmailAndPassword(auth(), f.email, f.password);
         await establish();
