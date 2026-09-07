@@ -43,6 +43,11 @@ export interface Campaign {
   allocation: { label: string; percent: number }[];
   searchTokens: string[];
   closureRequested?: boolean;
+  fundingRatio?: number;
+  /** Set by admin moderation: the reason, the acting admin, and when. */
+  moderationReason?: string;
+  moderatedBy?: string;
+  moderatedAt?: string;
 }
 export interface Donation {
   id: string;
@@ -57,12 +62,17 @@ export interface Donation {
   message: string;
   paymentProvider: string;
   paymentReference: string;
-  paymentStatus: 'pending' | 'successful' | 'failed' | 'refunded';
+  paymentStatus: 'pending' | 'successful' | 'failed' | 'refunded' | 'disputed';
   frequency: 'once' | 'monthly';
   createdAt: string;
   receiptToken?: string;
   providerTransactionId?: string;
   refundedMinor?: number;
+  confirmedAt?: string;
+  category?: string;
+  adjustedBy?: string;
+  adjustmentReason?: string;
+  adjustedAt?: string;
 }
 export interface UserProfile {
   uid: string;
@@ -76,6 +86,10 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
   savedCampaigns: string[];
+  fundraiserVerified?: boolean;
+  fundraiserVerifiedAt?: string;
+  adminNotes?: string;
+  moderationReason?: string;
 }
 export interface Content {
   announcement: string;

@@ -12,6 +12,7 @@ import { apiError } from '@/lib/api';
 import { campaignSchema } from '@/lib/validation';
 import { assertOwnedImages } from '@/lib/media';
 import { tokens } from '@/lib/brand';
+import { notifyAdmins } from '@/lib/admin/notifications';
 export async function POST(request: Request) {
   try {
     assertOrigin(request);
@@ -51,6 +52,12 @@ export async function POST(request: Request) {
       searchTokens: tokens(
         `${input.title} ${input.category} ${input.shortDescription} ${input.location}`,
       ),
+    });
+    await notifyAdmins({
+      type: 'campaign_submitted',
+      title: 'New campaign submitted',
+      message: `${input.title} — ${user.firstName} ${user.lastName}`.trim(),
+      href: `/admin/campaigns/${ref.id}`,
     });
     return NextResponse.json({ id: ref.id, slug }, { status: 201 });
   } catch (e) {

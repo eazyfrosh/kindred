@@ -1,8 +1,9 @@
-import { loadEnvConfig } from '@next/env';
+// @next/env ships CommonJS only, so it is imported as a default export.
+import nextEnv from '@next/env';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { demoCampaigns, defaultContent } from '../lib/demo';
-loadEnvConfig(process.cwd());
+nextEnv.loadEnvConfig(process.cwd());
 async function main() {
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
   if (!projectId || process.env.SEED_PROJECT_CONFIRM !== projectId)

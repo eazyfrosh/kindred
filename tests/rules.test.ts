@@ -33,6 +33,24 @@ before(async () => {
     });
     await setDoc(doc(db, 'campaigns/private'), { status: 'pending', organizerId: 'alice' });
     await setDoc(doc(db, 'donations/private'), { donorId: 'alice', paymentStatus: 'pending' });
+    await setDoc(doc(db, 'payouts/alice-payout'), {
+      organizerId: 'alice',
+      campaignId: 'public',
+      amount: 100,
+      status: 'requested',
+    });
+    await setDoc(doc(db, 'auditLogs/entry'), {
+      adminId: 'admin',
+      adminEmail: 'admin@example.org',
+      action: 'campaign.approve',
+      targetType: 'campaign',
+      targetId: 'public',
+    });
+    await setDoc(doc(db, 'adminNotifications/alert'), {
+      type: 'campaign_submitted',
+      title: 'New campaign submitted',
+      read: false,
+    });
   });
 });
 after(async () => {
@@ -61,6 +79,55 @@ test('private profile ownership and server-only admin writes', { skip: !enabled 
   await assertFails(
     updateDoc(doc(env.authenticatedContext('admin').firestore(), 'campaigns/public'), {
       amountRaised: 9000,
+    }),
+  );
+});
+test('payouts are readable by their organizer and admins only', { skip: !enabled }, async () => {
+  await assertSucceeds(
+    getDoc(doc(env.authenticatedContext('alice').firestore(), 'payouts/alice-payout')),
+  );
+  await assertSucceeds(
+    getDoc(doc(env.authenticatedContext('admin').firestore(), 'payouts/alice-payout')),
+  );
+  await assertFails(
+    getDoc(doc(env.authenticatedContext('bob').firestore(), 'payouts/alice-payout')),
+  );
+  await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'payouts/alice-payout')));
+  // Organizers request payouts through an authorized server route, never directly.
+  await assertFails(
+    updateDoc(doc(env.authenticatedContext('alice').firestore(), 'payouts/alice-payout'), {
+      status: 'approved',
+    }),
+  );
+  await assertFails(
+    updateDoc(doc(env.authenticatedContext('admin').firestore(), 'payouts/alice-payout'), {
+      status: 'paid',
+    }),
+  );
+});
+test('audit logs are closed to every client, including admins', { skip: !enabled }, async () => {
+  for (const context of [
+    env.unauthenticatedContext(),
+    env.authenticatedContext('alice'),
+    env.authenticatedContext('admin'),
+  ]) {
+    await assertFails(getDoc(doc(context.firestore(), 'auditLogs/entry')));
+    await assertFails(setDoc(doc(context.firestore(), 'auditLogs/forged'), { action: 'forged' }));
+    await assertFails(
+      updateDoc(doc(context.firestore(), 'auditLogs/entry'), { action: 'rewritten' }),
+    );
+  }
+});
+test('admin notifications are admin-read and server-write only', { skip: !enabled }, async () => {
+  await assertSucceeds(
+    getDoc(doc(env.authenticatedContext('admin').firestore(), 'adminNotifications/alert')),
+  );
+  await assertFails(
+    getDoc(doc(env.authenticatedContext('alice').firestore(), 'adminNotifications/alert')),
+  );
+  await assertFails(
+    updateDoc(doc(env.authenticatedContext('admin').firestore(), 'adminNotifications/alert'), {
+      read: true,
     }),
   );
 });

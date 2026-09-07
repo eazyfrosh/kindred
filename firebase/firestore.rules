@@ -27,6 +27,15 @@ service cloud.firestore {
   match /comments/{id} { allow read: if (resource.data.status == 'approved' && publicCampaign(resource.data.campaignId)) || admin(); allow write: if false; }
   match /notifications/{id} { allow read: if active() && resource.data.userId == request.auth.uid; allow write: if false; }
   match /siteSettings/{id} { allow read: if id == 'public' || id == 'metrics' || admin(); allow write: if false; }
+  match /payouts/{id} {
+   // Organizers see their own requests; only the server creates or transitions them.
+   allow read: if active() && (resource.data.organizerId == request.auth.uid || admin());
+   allow write: if false;
+  }
+  // Audit logs are append-only from the server. No client may read, write, edit, or delete them;
+  // administrators read them through an authorized server route.
+  match /auditLogs/{id} { allow read, write: if false; }
+  match /adminNotifications/{id} { allow read: if admin(); allow write: if false; }
   match /volunteerApplications/{id} { allow read: if admin(); allow write: if false; }
   match /contactMessages/{id} { allow read: if admin(); allow write: if false; }
   match /newsletterSubscribers/{id} { allow read: if admin(); allow write: if false; }

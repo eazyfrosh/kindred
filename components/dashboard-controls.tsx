@@ -173,34 +173,3 @@ export function UpdateForm({ id }: { id: string }) {
     </form>
   );
 }
-export function NotesForm({ id, notes }: { id: string; notes: string }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        try {
-          await requestJSON('/api/admin/volunteerApplications', {
-            id,
-            action: 'notes',
-            notes: new FormData(e.currentTarget).get('notes'),
-          });
-          toast.success('Internal notes saved.');
-        } catch (e) {
-          toast.error((e as Error).message);
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      <label>
-        Internal notes
-        <textarea name="notes" rows={2} defaultValue={notes} maxLength={5000} />
-      </label>
-      <button className="button secondary small-button mt-3" disabled={busy}>
-        Save notes
-      </button>
-    </form>
-  );
-}

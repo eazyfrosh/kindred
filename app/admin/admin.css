@@ -1,0 +1,90 @@
+/*
+ * Admin-only base styling.
+ *
+ * The public site sets bare element styles (`h1`, `p`, `a`, `label`, `input`,
+ * `table`…) outside any cascade layer, and Tailwind ships its utilities inside
+ * the `utilities` layer — so an unlayered element rule beats a utility class no
+ * matter how specific the class is. Inside the admin shell those properties are
+ * rolled back with `revert-layer`, which hands control to the utility classes
+ * this dashboard is built from, without changing one pixel of the public site.
+ */
+.admin-shell {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: normal;
+}
+
+.admin-shell :is(h1, h2, h3, h4, h5, h6, p) {
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+  letter-spacing: revert-layer;
+  margin: revert-layer;
+  color: revert-layer;
+}
+
+.admin-shell a {
+  color: revert-layer;
+  text-decoration: revert-layer;
+}
+
+.admin-shell label {
+  display: revert-layer;
+  flex-direction: revert-layer;
+  gap: revert-layer;
+  font-size: revert-layer;
+  font-weight: revert-layer;
+}
+
+.admin-shell :is(input, select, textarea) {
+  width: revert-layer;
+  min-width: revert-layer;
+  border: revert-layer;
+  border-radius: revert-layer;
+  background: revert-layer;
+  color: revert-layer;
+  padding: revert-layer;
+}
+
+.admin-shell :is(button, input, select, textarea) {
+  font-family: inherit;
+  font-size: revert-layer;
+  font-weight: revert-layer;
+  line-height: revert-layer;
+}
+
+.admin-shell table {
+  font-size: revert-layer;
+  text-align: revert-layer;
+}
+
+.admin-shell :is(th, td) {
+  padding: revert-layer;
+  border-bottom: revert-layer;
+  color: revert-layer;
+  font-weight: revert-layer;
+  background: revert-layer;
+  white-space: revert-layer;
+  max-width: revert-layer;
+  text-align: revert-layer;
+}
+
+/* Checkboxes must keep their intrinsic size after the width rollback. */
+.admin-shell input[type='checkbox'],
+.admin-shell input[type='radio'] {
+  width: auto;
+  accent-color: #193be0;
+}
+
+.admin-shell input[type='date'] {
+  min-height: 38px;
+}

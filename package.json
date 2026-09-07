@@ -17,7 +17,8 @@
     "test:rules:only": "tsx --test tests/rules.test.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:smoke": "node tests/http-smoke.mjs"
+    "test:smoke": "node tests/http-smoke.mjs",
+    "seed:admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
     "firebase": "12.18.0",
@@ -27,6 +28,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "10.1.0",
+    "recharts": "3.10.1",
     "server-only": "0.0.1",
     "sonner": "2.0.8",
     "stripe": "22.6.1",

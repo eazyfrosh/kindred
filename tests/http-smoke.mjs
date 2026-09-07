@@ -39,9 +39,10 @@ const request = (path, origin) =>
     headers: { 'Content-Type': 'application/json', Origin: origin },
     body: '{}',
   });
-assert.equal((await request('/api/admin/campaigns', 'https://untrusted.example')).status, 403);
+assert.equal((await request('/api/campaigns', 'https://untrusted.example')).status, 403);
+assert.equal((await fetch(base + '/api/admin/search?q=test')).status, 401);
 assert.equal((await request('/api/donations/initialize', base)).status, 503);
 assert.equal((await request('/api/submissions/contact', base)).status, 503);
 console.log(
-  `${paths.length} public/static routes, 3 protected redirects, and 3 mutation guards passed.`,
+  `${paths.length} public/static routes, 3 protected redirects, and 4 mutation guards passed.`,
 );

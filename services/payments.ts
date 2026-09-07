@@ -6,6 +6,7 @@ import { db } from '@/firebase/admin';
 import { brand } from '@/lib/brand';
 import { HttpError } from '@/lib/security';
 import { assertPaymentMatch, minorUnits, validSignature } from '@/lib/payment-integrity';
+import { HIGH_VALUE_DONATION, notifyAdminsIn } from '@/lib/admin/notifications';
 import type { Donation } from '@/types';
 export type Provider = 'stripe' | 'paystack' | 'flutterwave';
 export function secret(provider: Provider) {
@@ -233,7 +234,7 @@ export async function settlePayment(payment: ConfirmedPayment) {
     const newPercent = Math.floor(
       ((Number(campaign.data()!.amountRaised) + amount) / Number(campaign.data()!.goalAmount)) * 4,
     );
-    if (newPercent > oldPercent)
+    if (newPercent > oldPercent) {
       tx.create(db().collection('notifications').doc(), {
         userId: campaign.data()!.organizerId,
         title: newPercent >= 4 ? 'Your campaign reached its goal!' : 'A campaign milestone reached',
@@ -241,6 +242,21 @@ export async function settlePayment(payment: ConfirmedPayment) {
         campaignId: original.campaignId,
         read: false,
         createdAt: now,
+      });
+      if (newPercent >= 4)
+        notifyAdminsIn(tx, {
+          type: 'campaign_goal_reached',
+          title: 'Campaign reached its goal',
+          message: `${original.campaignTitle} — ${original.currency} ${newRaisedMinor / 100}`,
+          href: `/admin/campaigns/${original.campaignId}`,
+        });
+    }
+    if (amount >= HIGH_VALUE_DONATION)
+      notifyAdminsIn(tx, {
+        type: 'high_value_donation',
+        title: 'High-value donation received',
+        message: `${original.currency} ${amount} to ${original.campaignTitle}`,
+        href: `/admin/donations/${id}`,
       });
     if (payment.customerId && original.donorId)
       tx.set(

@@ -86,15 +86,43 @@ This is a Node-runtime Next.js application. Firebase Admin uses server-side APIs
 - `/about`, `/how-it-works`, `/impact`, `/volunteer`, `/contact`, `/privacy`, `/terms`.
 - `/login`, `/signup`, `/forgot-password`: Firebase email/password, Google, verification and recovery.
 - `/dashboard`: donation history/receipts, lifetime giving by currency, saved causes, fundraiser status, allowed edits, updates/images, redacted recent donors, view/share counts, closure requests, notifications, profile and subscription management.
-- `/admin`: server-authorized overview, lifetime/daily/monthly revenue, user growth, category revenue, campaign performance; campaign review/edit/feature/suspend/complete/delete; donation status filters; user roles/access/verification/history; volunteer statuses/notes; inbox; comment moderation; structured website content editing.
+- `/admin`: the administration dashboard. See [Administration](#administration).
+
+## Administration
+
+`/admin` is a separate dashboard shell (collapsible sidebar, drawer navigation on mobile, sticky topbar with global search, notifications and profile menu). It is built with Tailwind utilities inside `.admin-shell`; the public site keeps its own design language and is unchanged.
+
+| Route                                                          | What it does                                                                                                                                                                                                        |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/admin`                                                       | KPI cards with period-over-period change, donation revenue (daily/weekly/monthly), donation volume, campaign performance, category revenue, user growth, top campaigns and six recent-activity feeds.               |
+| `/admin/campaigns`, `/admin/campaigns/[id]`                    | Filterable campaign table and a review page with story, gallery, updates, donations, comments, audit history and a moderation panel (approve, reject, suspend, unsuspend, complete, verify, feature, delete, edit). |
+| `/admin/donations`, `/admin/donations/[id]`                    | Ledger with status/provider/campaign/currency/date filters, and a transaction page showing webhook confirmation, refunds and internal metadata.                                                                     |
+| `/admin/users`, `/admin/users/[uid]`                           | Search by name, email or UID; roles, verification, suspension, notes, campaigns, donation history and audit history.                                                                                                |
+| `/admin/fundraisers`                                           | Organizer-focused view with verification state, active campaigns and lifetime totals.                                                                                                                               |
+| `/admin/payouts`, `/admin/payouts/[id]`                        | Withdrawal requests with a server-computed balance breakdown and validated status transitions.                                                                                                                      |
+| `/admin/volunteers`, `/admin/messages`, `/admin/newsletter`    | Applications, contact inbox and subscriber list with CSV export.                                                                                                                                                    |
+| `/admin/testimonials`, `/admin/partners`, `/admin/content`     | Publishable testimonials and partners with display ordering, plus homepage announcement, hero, mission, impact statistics, donation impact amounts, featured campaigns and FAQs.                                    |
+| `/admin/notifications`, `/admin/audit-logs`, `/admin/settings` | System notifications, the append-only audit trail, and platform settings (general, donations, campaigns, fees, social links).                                                                                       |
+
+Access control lives in `lib/admin/auth.ts` (`getAuthenticatedUser`, `requireUser`, `requireAdmin`, `requireAdminPage`). The signed session cookie is verified with the Firebase Admin SDK on every request, with `checkRevoked` so a role change or suspension takes effect immediately. Admin custom claims are preferred and are minted on every role change; the existing Firestore `role` field remains authoritative when no claim has been minted. Roles are never read from the browser. `proxy.ts` only redirects unauthenticated navigation; the `/admin` layout and every `/admin` page re-authorize server-side before any privileged query runs, so an unauthorized visitor is redirected without a single Firestore read.
+
+Mutations are server actions in `lib/admin/actions/`, each of which calls `requireAdmin()` and validates its input with Zod before touching Firestore. Services are split by domain in `lib/admin/`: `auth`, `analytics`, `campaigns`, `users`, `donations`, `payouts`, `content`, `submissions`, `notifications`, `search`, `audit`, `query`, `cache`.
+
+Rejection, suspension, unverification, deletion, role changes and payout rejections require a written reason, which is stored with the record, sent to the affected organizer as a notification, and written to the audit log with the acting administrator's ID and email.
+
+**Donation status.** A payment is only ever marked `successful` by a signature-verified provider webhook. The dashboard exposes no path to that state. An administrator may record a refund, a dispute, or an abandoned intent that a provider reported out of band; each of those is validated against the current status and written to the audit log with a reason.
+
+**Payouts.** Available balance is computed server-side from Firestore aggregate queries: campaign donations, minus refunds and disputes, minus platform fees, minus payouts already reserved by open or committed requests. Transitions follow a fixed state machine (`requested → under_review → approved → processing → paid`, with `rejected`/`cancelled` terminal), are applied in a transaction, and an approval re-checks the balance, so a payout can neither exceed the funds held for the campaign nor be processed twice. Disbursement is isolated in `services/payouts.ts`; only a masked destination summary and an opaque provider token are stored, and payment provider secrets stay in environment variables — the settings form does not accept them.
+
+**Performance.** Analytics read pre-aggregated counters (`siteSettings/metrics`, `_revenuePeriods`, `_userStats`) and Firestore `count()`/`sum()` aggregates rather than scanning the ledger, memoised for 60 seconds in `lib/admin/cache.ts`. Tables use cursor pagination (25 rows per page) with the composite indexes in `firebase/firestore.indexes.json`. The dashboard opens no realtime listeners.
 
 ## Data and permissions
 
 Shared models are in `types/`; schemas in `lib/validation.ts`; server services in `services/`; client/server Firebase initialization in `firebase/`; authorization in `lib/security.ts`.
 
-Collections: `users`, `campaigns`, `donations`, `publicDonations`, `campaignUpdates`, `comments`, `volunteerApplications`, `contactMessages`, `newsletterSubscribers`, `notifications`, `siteSettings`. The content editor stores testimonials, partners, FAQs, team and announcements in `siteSettings/public`; standalone testimonial/partner rule paths are reserved for later migration.
+Collections: `users`, `campaigns`, `donations`, `publicDonations`, `campaignUpdates`, `comments`, `payouts`, `volunteerApplications`, `contactMessages`, `newsletterSubscribers`, `testimonials`, `partners`, `notifications`, `adminNotifications`, `auditLogs`, `siteSettings`. Testimonials and partners are managed in their own collections and mirrored into `siteSettings/public` so the public homepage keeps reading them from one document. `siteSettings/platform` holds platform settings; `siteSettings/public` holds homepage content. `notifications` is per user; `adminNotifications` is the administration feed. `auditLogs` is append-only: Firestore rules deny every client read and write, and no admin UI path edits or deletes an entry.
 
-Internal collections: `_paymentTransactions`, `_campaignDonors`, `_donors`, `_userCampaigns`, `_userStats`, `_revenuePeriods`, `_billingCustomers`, `_subscriptions`, `_rateLimits`, `_auditLog`. Clients cannot access these collections. Financial amounts use integer minor units at provider boundaries; the supported currencies all use two decimal places. Display amounts are decimal major units. Never aggregate unlike currencies without an explicit exchange-rate policy.
+Internal collections: `_paymentTransactions`, `_campaignDonors`, `_donors`, `_userCampaigns`, `_userStats`, `_revenuePeriods`, `_billingCustomers`, `_subscriptions`, `_rateLimits`. Clients cannot access these collections. Financial amounts use integer minor units at provider boundaries; the supported currencies all use two decimal places. Display amounts are decimal major units. Never aggregate unlike currencies without an explicit exchange-rate policy.
 
 All privileged writes go through server routes. Firestore clients can only change allowed profile-name fields. Owners edit eligible campaigns through the authenticated server endpoint; published campaigns retain their story and use updates. Funded campaigns or campaigns with any payment intent cannot be deleted. Profile roles, email verification, payment status, approval and donation totals are never accepted from browser data.
 
@@ -111,6 +139,14 @@ npm run seed
 ```
 
 The script never overwrites existing records and never fabricates confirmed financial transactions. It creates fictional campaigns with zero raised amounts and zero donors. Replace fictional organizers and stock content before publication. Demo visual totals live only in the explicit read-only demonstration.
+
+To give the admin dashboard something to work with in development — 10 users, 8 campaigns, 20 donations, 3 payout requests, volunteer applications and contact messages — run:
+
+```sh
+NODE_ENV=development SEED_PROJECT_CONFIRM=<project-id> SEED_ADMIN_CONFIRM=yes npm run seed:admin
+```
+
+It refuses to run with `NODE_ENV=production`, requires the project ID to be repeated in `SEED_PROJECT_CONFIRM`, and requires the explicit `SEED_ADMIN_CONFIRM=yes`. Every document it writes carries `seeded: true` so it can be found and removed. This data is fictional; never point it at production. Grant yourself the admin role with `npm run admin:grant -- <uid>`.
 
 ## Verification
 
