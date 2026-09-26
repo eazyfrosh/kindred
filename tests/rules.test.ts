@@ -9,6 +9,29 @@ import {
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
 const enabled = !!process.env.FIRESTORE_EMULATOR_HOST;
+test(
+  'manual payment configuration, accounting and audit records reject direct client writes',
+  { skip: !enabled },
+  async () => {
+    for (const uid of ['alice', 'admin']) {
+      const client = env.authenticatedContext(uid).firestore();
+      for (const path of [
+        'paymentMethods/test',
+        'manualPayments/test',
+        'auditLogs/test',
+        '_manualSubmissions/test',
+      ])
+        await assertFails(setDoc(doc(client, path), { status: 'confirmed', enabled: true }));
+    }
+    await assertFails(
+      uploadBytes(
+        ref(env.authenticatedContext('admin').storage(), 'payment-methods/test.png'),
+        new Uint8Array([137, 80, 78, 71]),
+        { contentType: 'image/png' },
+      ),
+    );
+  },
+);
 let env: RulesTestEnvironment;
 before(async () => {
   if (!enabled) return;

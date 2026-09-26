@@ -49,17 +49,15 @@ The app collects a donation amount and donor details, then redirects to provider
 | Provider    | Server variables                                       | Webhook route                       |
 | ----------- | ------------------------------------------------------ | ----------------------------------- |
 | Stripe      | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`           | `/api/payments/webhook/stripe`      |
-| Paystack    | `PAYSTACK_SECRET_KEY`                                  | `/api/payments/webhook/paystack`    |
 | Flutterwave | `FLUTTERWAVE_SECRET_KEY`, `FLUTTERWAVE_WEBHOOK_SECRET` | `/api/payments/webhook/flutterwave` |
 
 Alternatively, set `PAYMENT_PROVIDER` plus `PAYMENT_PROVIDER_SECRET` and `PAYMENT_WEBHOOK_SECRET` for one provider. Explicit provider variables take precedence. Only configured providers appear in live checkout.
 
 - **Stripe:** Subscribe to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `invoice.paid`, and `charge.refunded`. Configure Stripe's customer billing portal with cancellation enabled. Monthly donors must sign in; `/dashboard?tab=donations` opens the portal. Do not enable discounts, manual paid invoices, or changing subscription prices outside the platform's donation contract.
-- **Paystack:** Configure the webhook URL. Signature verification uses HMAC-SHA512 with the Paystack secret key; successful events are re-verified using the transaction verification API. Enable the required currencies in your merchant account.
 - **Flutterwave:** Uses v3 hosted payments and transaction verification. Configure raw-body HMAC-SHA256 / base64 webhooks in the `flutterwave-signature` header. Legacy `verif-hash` payloads are intentionally rejected; confirm your account's webhook format before enabling it. Enable webhook retries.
-- Monthly giving is implemented through Stripe. Paystack and Flutterwave adapters support one-time donations.
+- Monthly giving is implemented through Stripe. Flutterwave adapters support one-time donations.
 - One-time Stripe checkout uses a PaymentIntent ID for deduplication; recurring payments use the invoice ID. Firestore transactions atomically record the donation, update totals, create public redacted donor entries, and notify the organizer. Provider transaction markers prevent replay across donation references.
-- Stripe refunds update net totals idempotently, including monthly invoices resolved through Invoice Payments. Paystack/Flutterwave refund automation is not enabled; reconcile those refunds through a reviewed server operation before reporting net totals. Refund initiation occurs in the provider dashboard, not through a browser-admin “mark paid” control.
+- Stripe refunds update net totals idempotently, including monthly invoices resolved through Invoice Payments. Flutterwave refund automation is not enabled; reconcile those refunds through a reviewed server operation before reporting net totals. Refund initiation occurs in the provider dashboard, not through a browser-admin “mark paid” control.
 - The success URL does not confirm payment. Receipt pages show pending until a signed, verified webhook settles it. Receipts are printable or can be saved as PDF using the browser. Guest receipt links contain a random bearer token, carry a no-referrer policy, and must be kept private.
 - Receipt display is implemented. App-originated receipt emails and newsletter delivery need an email service integration; provider receipt emails can be enabled in the provider dashboard.
 
@@ -128,6 +126,20 @@ Unit tests cover money conversion, signature tampering, exact amount/currency/pr
 No real Firebase project, real provider credentials, or Vercel deployment was available in this build session. Browser interaction testing was not requested or performed. WebMCP discovery navigation is feature-detected, but the experimental registry was not verified in a supported browser context. See `VALIDATION.md` for the actual checks run.
 
 ## Operational follow-up
+
+### Crypto and manual transfers
+
+Administrators manage methods at `/admin/payment-methods` using **+ Add Payment Method**. No wallet destinations are seeded or hardcoded. Configure a name, symbol, network, destination, instructions, minimum donation, order and enabled status. Every crypto method requires a network; create separate entries for USDT TRC20, ERC20 and BEP20. BTC, ETH, USDC and other assets use the same configuration. Custom/manual methods are also supported.
+
+Set the campaign settlement currency, transfer units per one settlement-currency unit, and decimal precision. For example, a configured rate of 0.00001 BTC per USD quotes 0.00025 BTC for a USD 25 gift. Rates are manually maintained, not live market prices. Quotes round up to configured precision, expire after 24 hours, and snapshot the destination, network, rate, QR and instructions. Method changes apply only to new checkouts. Minimum amounts are in the campaign settlement currency. Enable a method only after checking its rate and destination.
+
+QR codes are generated from the saved address automatically. Alternatively upload a PNG, JPEG or WebP up to 2 MB. Uploaded files live under `payment-methods/` in Firebase Storage, are validated on the server, and are served through the QR endpoint. Client Storage writes are denied, including for administrators; authenticated server APIs handle uploads. Confirm that an uploaded QR matches the saved wallet address.
+
+Donors choose enabled methods dynamically, receive the exact transfer instructions, and submit a transaction hash/ID. Submission stays **pending** and does not credit a campaign. Review at `/admin/payments`, move to **verifying**, and independently verify the asset, network, destination, transferred amount and finality before **confirmed**. Supply review evidence for every transition. **Rejected** and **expired** payments cannot be confirmed later. A late transfer requires offline reconciliation with the donor. Never ask donors to resend without checking the first transfer.
+
+Confirmation atomically updates the donation, campaign totals, metrics, notifications, payment status and `auditLogs`. Global transaction-ID reservations and ledger markers prevent duplicate credit even across network aliases. One transaction is accepted for one donation; split allocations of one transaction are not supported. Rejected reservations are retained. Transaction IDs are normalized to lowercase conservatively; any collision requires offline reconciliation. Internal review notes are not returned in donor receipts. A confirmation cannot be reversed through this interface; reconcile any manual refund separately rather than editing totals in Firestore.
+
+`paymentMethods`, `manualPayments`, `_manualSubmissions` and `auditLogs` are server-managed collections. Deploy `firebase/firestore.indexes.json` before using payment status filters. The new feature requires the existing Firebase client/Admin environment variables and a provisioned Storage bucket for uploaded QR files; no blockchain API secret is required. The `BlockchainVerifier` interface is reserved for a future authoritative adapter; this release uses manual review. Existing optional hosted Stripe/Flutterwave checkouts remain available only when configured.
 
 Use provider webhook delivery logs and retry failed deliveries. Reconcile the donation ledger against provider exports, including pending transactions and refunds. Set Firebase budgets, least-privilege IAM, backups, retention, and monitoring appropriate to the organization. The app does not distribute funds to third-party organizers; funds settle to the configured merchant account. Marketplace payouts would require a separate provider Connect/subaccount design and onboarding process.
 

@@ -97,6 +97,64 @@ test('concurrent duplicate webhooks settle once; mismatched payments leave total
     'refunded',
   );
 });
+test('manual confirmation requires an admin, credits once under concurrent retries, and cannot revive rejected payments', async () => {
+  const cid = `manual-${randomUUID()}`;
+  await db()
+    .collection('campaigns')
+    .doc(cid)
+    .set({
+      amountRaised: 0,
+      goalAmount: 100,
+      donorCount: 0,
+      organizerId: 'organizer',
+      status: 'approved',
+    });
+  const id = await intent();
+  await db().collection('donations').doc(id).update({ campaignId: cid, paymentProvider: 'manual' });
+  const transactionId = `test-network:${randomUUID()}`;
+  await db()
+    .collection('manualPayments')
+    .doc(id)
+    .set({ status: 'pending', transactionHash: 'test-hash', transactionIdentity: transactionId });
+  await db().collection('users').doc('reviewer').set({ role: 'admin', disabled: false });
+  await db().collection('users').doc('ordinary').set({ role: 'user', disabled: false });
+  const payment = {
+    reference: id,
+    transactionId,
+    amountMinor: 2500,
+    currency: 'USD',
+    provider: 'manual' as const,
+  };
+  await assert.rejects(settlePayment(payment));
+  await assert.rejects(
+    settlePayment(payment, { uid: 'ordinary', note: 'Attempted unauthorized review' }),
+  );
+  assert.equal((await db().collection('campaigns').doc(cid).get()).data()!.amountRaised, 0);
+  await Promise.all(
+    Array.from({ length: 6 }, () =>
+      settlePayment(payment, { uid: 'reviewer', note: 'Independently verified test transfer' }),
+    ),
+  );
+  assert.equal((await db().collection('campaigns').doc(cid).get()).data()!.amountRaised, 25);
+  assert.equal((await db().collection('manualPayments').doc(id).get()).data()!.status, 'confirmed');
+  assert.equal((await db().collection('auditLogs').where('resourceId', '==', id).get()).size, 1);
+  const rejected = await intent();
+  await db()
+    .collection('donations')
+    .doc(rejected)
+    .update({ campaignId: cid, paymentProvider: 'manual' });
+  await db()
+    .collection('manualPayments')
+    .doc(rejected)
+    .set({ status: 'rejected', transactionHash: 'other-hash', transactionIdentity: 'other-id' });
+  await assert.rejects(
+    settlePayment(
+      { ...payment, reference: rejected, transactionId: 'other-id' },
+      { uid: 'reviewer', note: 'Must not revive rejected payment' },
+    ),
+  );
+  assert.equal((await db().collection('campaigns').doc(cid).get()).data()!.amountRaised, 25);
+});
 after(async () => {
   await deleteApp(adminApp());
 });

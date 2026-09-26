@@ -32,6 +32,10 @@ service cloud.firestore {
   match /newsletterSubscribers/{id} { allow read: if admin(); allow write: if false; }
   match /testimonials/{id} { allow read: if resource.data.published == true || admin(); allow write: if false; }
   match /partners/{id} { allow read: if resource.data.published == true || admin(); allow write: if false; }
+  // Destinations, private submissions and audit history are served only by authorized server APIs.
+  match /paymentMethods/{id} { allow read, write: if false; }
+  match /manualPayments/{id} { allow read, write: if false; }
+  match /auditLogs/{id} { allow read, write: if false; }
   match /{document=**} { allow read, write: if false; }
  }
 }

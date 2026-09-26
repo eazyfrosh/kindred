@@ -36,7 +36,7 @@ export const donationSchema = z.object({
   country: text(100),
   message: z.string().trim().max(1000).default(''),
   anonymous: z.boolean(),
-  provider: z.enum(['stripe', 'paystack', 'flutterwave']),
+  provider: z.enum(['stripe', 'flutterwave']),
   idempotencyKey: z.string().uuid(),
 });
 export const contactSchema = z.object({

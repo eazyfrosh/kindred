@@ -26,6 +26,8 @@ export function Workspace({
         ['overview', 'Overview', LayoutDashboard],
         ['campaigns', 'Campaigns', Flag],
         ['donations', 'Donations', Heart],
+        ['payments', 'Payment reviews', Heart],
+        ['payment-methods', 'Payment methods', Settings],
         ['users', 'People', Users],
         ['volunteers', 'Volunteers', HandHeart],
         ['messages', 'Messages', MessageSquare],
@@ -53,7 +55,11 @@ export function Workspace({
               <Link
                 key={String(id)}
                 className={tab === id ? 'active' : ''}
-                href={`${admin ? '/admin' : '/dashboard'}?tab=${id}`}
+                href={
+                  admin && ['payments', 'payment-methods'].includes(String(id))
+                    ? `/admin/${id}`
+                    : `${admin ? '/admin' : '/dashboard'}?tab=${id}`
+                }
               >
                 <Icon size={17} />
                 {String(title)}

@@ -20,7 +20,7 @@ test('payment settlement checks currency, provider, and exact amount', () => {
   for (const actual of [
     { amountMinor: 1, currency: 'USD', provider: 'stripe' },
     { amountMinor: 2500, currency: 'NGN', provider: 'stripe' },
-    { amountMinor: 2500, currency: 'USD', provider: 'paystack' },
+    { amountMinor: 2500, currency: 'USD', provider: 'flutterwave' },
   ])
     assert.throws(() => assertPaymentMatch(expected, actual));
 });

@@ -10,7 +10,7 @@ export async function POST(
 ) {
   try {
     assertLive();
-    const provider = z.enum(['stripe', 'paystack', 'flutterwave']).parse((await params).provider);
+    const provider = z.enum(['stripe', 'flutterwave']).parse((await params).provider);
     await processWebhook(provider, request);
     return NextResponse.json({ received: true });
   } catch (e) {

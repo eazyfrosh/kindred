@@ -1,5 +1,14 @@
 # Validation record
 
+## Crypto/manual payment update — 26 September 2026
+
+- Production build, TypeScript and ESLint passed after the update.
+- Nine unit tests passed, including decimal quote rounding, mandatory networks, valid QR paths and terminal payment states.
+- Seven Firebase emulator tests passed. Six concurrent manual confirmations produced one campaign credit and one audit event. Unauthorized reviewers and attempts to confirm rejected payments failed. Direct client writes to methods, submissions and audit records, and direct QR uploads, were rejected.
+- Windows `tsx` could not read OS user information (`uv_os_get_passwd`), so tests were compiled with TypeScript and run with Node's test runner. Firebase tests ran in an isolated unsigned-in `demo-kindred` emulator configuration. No production payment or wallet was created.
+- Case-insensitive repository search returned no references to the removed provider, excluding dependency files, generated Next build output and Git history.
+- Payment status filtering requires the new `manualPayments` composite index: `status` ascending, `createdAt` descending (collection scope). Production index deployment and browser/live payment verification were not performed in this update.
+
 Build session: 6 September 2026.
 
 ## Passed
@@ -22,7 +31,7 @@ Unit-only `npm test` skips the four emulator tests when no emulator is running. 
 ## Not verified in this session
 
 - Firebase project provisioning, IAM, live composite-index deployment, email delivery, authorized domains, and real Firebase sign-in/upload flows.
-- Merchant-account checkout and external webhook delivery for Stripe, Paystack, or Flutterwave; monthly renewals/cancellation against a real test account.
+- Merchant-account checkout and external webhook delivery for Stripe or Flutterwave; monthly renewals/cancellation against a real test account.
 - A live Vercel deployment or custom domain.
 - Browser interaction, screen-reader, or viewport screenshot testing. Responsive styles and accessibility semantics are implemented, but browser QA was not requested or performed.
 - Experimental WebMCP registry interaction. Discovery navigation is feature-detected; no verified browser registry context was used.
@@ -31,7 +40,7 @@ Unit-only `npm test` skips the four emulator tests when no emulator is running. 
 
 - Configure `.env.example`, Firebase rules/indexes, merchant webhooks, billing portal, and the first administrator as described in `README.md`.
 - Receipt display/printing works; app-originated email receipts and newsletter delivery need an email integration or provider receipt settings.
-- Monthly giving uses Stripe. Other provider adapters support one-time gifts. Automated refund ledger updates are implemented for Stripe; Paystack/Flutterwave refunds require reconciliation through a reviewed server operation.
+- Monthly giving uses Stripe. Other provider adapters support one-time gifts. Automated refund ledger updates are implemented for Stripe; Flutterwave refunds require reconciliation through a reviewed server operation.
 - Full-text/fuzzy search is an adapter extension. Live discovery uses a normalized whole-word keyword, category, sort, and cursors. Campaign and user administration use indexed keyword search; other administration lists search the current bounded page, as the interface explicitly labels.
 - The operating organization must replace policy templates, fictional content and temporary branding, and establish its payout/refund procedures before launch.
 

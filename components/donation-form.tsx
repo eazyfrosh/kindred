@@ -6,19 +6,24 @@ import { ShieldCheck, ArrowUpRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { money } from '@/lib/brand';
 import type { Campaign } from '@/types';
+import type { PaymentMethod } from '@/lib/manual-payment';
 import { requestJSON } from './forms';
 export function DonationForm({
   campaign: c,
   providers,
+  methods,
 }: {
   campaign: Campaign;
   providers: string[];
+  methods: PaymentMethod[];
 }) {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [amount, setAmount] = useState(25);
   const [frequency, setFrequency] = useState('once');
-  const [provider, setProvider] = useState(providers[0] || 'stripe');
+  const [provider, setProvider] = useState(
+    methods[0] ? `manual:${methods[0].id}` : providers[0] || '',
+  );
   const [key, setKey] = useState('');
   const [donor, setDonor] = useState({
     firstName: '',
@@ -38,14 +43,17 @@ export function DonationForm({
     try {
       const idempotencyKey = key || crypto.randomUUID();
       setKey(idempotencyKey);
-      const result = await requestJSON('/api/donations/initialize', {
-        campaignId: c.id,
-        amount,
-        frequency,
-        provider,
-        ...donor,
-        idempotencyKey,
-      });
+      const manual = provider.startsWith('manual:');
+      const result = await requestJSON(
+        manual ? '/api/manual-payments' : '/api/donations/initialize',
+        {
+          campaignId: c.id,
+          amount,
+          ...(manual ? { methodId: provider.slice(7) } : { frequency, provider }),
+          ...donor,
+          idempotencyKey,
+        },
+      );
       window.location.assign(result.url);
     } catch (e) {
       toast.error((e as Error).message);
@@ -86,6 +94,7 @@ export function DonationForm({
                 <button
                   className={`choice ${frequency === 'monthly' ? 'active' : ''}`}
                   type="button"
+                  disabled={!providers.includes('stripe')}
                   onClick={() => {
                     setFrequency('monthly');
                     setProvider('stripe');
@@ -177,9 +186,17 @@ export function DonationForm({
                 to {c.title}
               </div>
               <label>
-                Payment provider
+                Payment method
                 <select value={provider} onChange={(e) => setProvider(e.target.value)}>
-                  {(providers.length ? providers : ['stripe', 'paystack', 'flutterwave'])
+                  {!provider && <option value="">No payment methods available</option>}
+                  {frequency === 'once' &&
+                    methods.map((m) => (
+                      <option key={m.id} value={`manual:${m.id}`}>
+                        {m.name} · {m.symbol} · {m.network || 'Custom'} (minimum{' '}
+                        {money(m.minimumAmount, c.currency)})
+                      </option>
+                    ))}
+                  {providers
                     .filter((p) => frequency === 'once' || p === 'stripe')
                     .map((p) => (
                       <option key={p} value={p}>
@@ -189,8 +206,9 @@ export function DonationForm({
                 </select>
               </label>
               <p className="small mt-5">
-                You’ll enter payment details on the provider’s secure checkout. Kindred never
-                receives or stores your card number or CVV.
+                {provider.startsWith('manual:')
+                  ? 'Continue to receive the exact transfer amount, destination and QR code. Your gift remains pending until the payment has been independently verified.'
+                  : 'Payment details are entered on the provider’s secure checkout. Kindred never stores card information.'}
               </p>
               <label className="check-label">
                 <input type="checkbox" required />I agree to the{' '}
@@ -210,7 +228,7 @@ export function DonationForm({
             >
               Back
             </button>
-            <button className="button" disabled={busy}>
+            <button className="button" disabled={busy || (step === 2 && !provider)}>
               {busy ? 'Opening checkout…' : step === 2 ? 'Continue to payment' : 'Continue'}
               <ArrowUpRight size={17} />
             </button>

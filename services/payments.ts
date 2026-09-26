@@ -7,7 +7,7 @@ import { brand } from '@/lib/brand';
 import { HttpError } from '@/lib/security';
 import { assertPaymentMatch, minorUnits, validSignature } from '@/lib/payment-integrity';
 import type { Donation } from '@/types';
-export type Provider = 'stripe' | 'paystack' | 'flutterwave';
+export type Provider = 'stripe' | 'flutterwave' | 'manual';
 export function secret(provider: Provider) {
   const value =
     process.env[`${provider.toUpperCase()}_SECRET_KEY`] ||
@@ -33,6 +33,8 @@ async function providerFetch(url: string, provider: Provider, body?: unknown) {
   return result;
 }
 export async function initializePayment(d: Donation) {
+  if (!['stripe', 'flutterwave'].includes(d.paymentProvider))
+    throw new HttpError(400, 'Use the manual payment checkout for this method.');
   const success = `${brand.url}/donation/success?reference=${d.id}&token=${d.receiptToken}`;
   if (d.frequency === 'monthly' && d.paymentProvider !== 'stripe')
     throw new HttpError(400, 'Monthly giving is currently available through Stripe.');
@@ -79,21 +81,6 @@ export async function initializePayment(d: Donation) {
     );
     return { url: session.url, sessionId: session.id };
   }
-  if (d.paymentProvider === 'paystack') {
-    const result = await providerFetch(
-      'https://api.paystack.co/transaction/initialize',
-      'paystack',
-      {
-        email: d.donorEmail,
-        amount: minorUnits(d.amount),
-        currency: d.currency,
-        reference: d.id,
-        callback_url: success,
-        metadata: { reference: d.id },
-      },
-    );
-    return { url: result.data.authorization_url, sessionId: String(result.data.access_code) };
-  }
   const result = await providerFetch('https://api.flutterwave.com/v3/payments', 'flutterwave', {
     tx_ref: d.id,
     amount: d.amount,
@@ -114,7 +101,10 @@ export interface ConfirmedPayment {
   customerId?: string;
   subscriptionId?: string;
 }
-export async function settlePayment(payment: ConfirmedPayment) {
+export async function settlePayment(
+  payment: ConfirmedPayment,
+  reviewer?: { uid: string; note: string },
+) {
   const intentRef = db().collection('donations').doc(payment.reference);
   const marker = db()
     .collection('_paymentTransactions')
@@ -122,6 +112,32 @@ export async function settlePayment(payment: ConfirmedPayment) {
   const now = new Date().toISOString();
   await db().runTransaction(async (tx) => {
     const [intentSnap, existing] = await Promise.all([tx.get(intentRef), tx.get(marker)]);
+    let manualRef: FirebaseFirestore.DocumentReference | undefined;
+    if (payment.provider === 'manual') {
+      if (!reviewer) throw new HttpError(403, 'Administrator review required.');
+      manualRef = db().collection('manualPayments').doc(payment.reference);
+      const [manual, actor] = await Promise.all([
+        tx.get(manualRef),
+        tx.get(db().collection('users').doc(reviewer.uid)),
+      ]);
+      if (actor.data()?.role !== 'admin' || actor.data()?.disabled)
+        throw new HttpError(403, 'Administrator access required.');
+      const p = manual.data();
+      if (
+        existing.exists &&
+        existing.data()?.donationId === payment.reference &&
+        p?.status === 'confirmed'
+      )
+        return;
+      if (existing.exists) throw new HttpError(409, 'Transaction already credited.');
+      if (
+        !p ||
+        !['pending', 'verifying'].includes(p.status) ||
+        !p.transactionHash ||
+        p.transactionIdentity !== payment.transactionId
+      )
+        throw new HttpError(409, 'Payment is not eligible for confirmation.');
+    }
     if (existing.exists) return;
     if (!intentSnap.exists) throw new Error('Donation intent not found.');
     const original = intentSnap.data() as Donation;
@@ -167,6 +183,25 @@ export async function settlePayment(payment: ConfirmedPayment) {
         ? { receiptToken: randomBytes(32).toString('hex'), parentDonationId: original.id }
         : {}),
     };
+    if (manualRef && reviewer) {
+      tx.update(manualRef, {
+        status: 'confirmed',
+        reviewNote: reviewer.note,
+        reviewedBy: reviewer.uid,
+        confirmedAt: now,
+        updatedAt: now,
+      });
+      tx.create(db().collection('auditLogs').doc(), {
+        actorId: reviewer.uid,
+        action: 'payment.confirmed',
+        resourceId: id,
+        amount,
+        currency: original.currency,
+        transactionId: payment.transactionId,
+        note: reviewer.note,
+        createdAt: now,
+      });
+    }
     tx.set(ref, donation, { merge: true });
     tx.create(marker, { donationId: id, createdAt: now, provider: payment.provider });
     tx.update(campaignRef, {
@@ -261,7 +296,7 @@ export async function settlePayment(payment: ConfirmedPayment) {
       );
   });
 }
-export async function processWebhook(provider: Provider, request: Request) {
+export async function processWebhook(provider: Exclude<Provider, 'manual'>, request: Request) {
   const raw = await request.text();
   if (raw.length > 1024 * 1024) throw new HttpError(413, 'Webhook too large.');
   if (provider === 'stripe') {
@@ -335,35 +370,6 @@ export async function processWebhook(provider: Provider, request: Request) {
       if (typeof charge.payment_intent === 'string')
         await recordStripeRefund(charge.payment_intent, charge.amount_refunded);
     }
-    return;
-  }
-  if (provider === 'paystack') {
-    if (
-      !validSignature(
-        raw,
-        request.headers.get('x-paystack-signature'),
-        secret(provider),
-        'sha512',
-        'hex',
-      )
-    )
-      throw new HttpError(400, 'Invalid webhook signature.');
-    const payload = JSON.parse(raw);
-    if (payload.event !== 'charge.success') return;
-    const ref = String(payload.data.reference);
-    if (!/^[a-zA-Z0-9_-]+$/.test(ref)) throw new HttpError(400, 'Invalid reference.');
-    const { data } = await providerFetch(
-      `https://api.paystack.co/transaction/verify/${ref}`,
-      provider,
-    );
-    if (data.status === 'success')
-      await settlePayment({
-        reference: data.reference,
-        transactionId: String(data.id),
-        amountMinor: Number(data.amount),
-        currency: data.currency,
-        provider,
-      });
     return;
   }
   const webhookSecret =
